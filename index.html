@@ -169,7 +169,11 @@
     </div>
 
     <script>
-        // โครงสร้างข้อมูลตาราง (อ้างอิงจากรูปภาพ)
+        // === การตั้งค่า URL ของ Google Apps Script ===
+        // นำ URL ที่ได้จากการ Deploy Google Apps Script Web App มาใส่ที่นี่
+        const GOOGLE_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+        // โครงสร้างข้อมูลตาราง
         const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'];
         const times = ['16.00', '16.30', '16.45', '17.00'];
         
@@ -183,6 +187,38 @@
         };
 
         let scheduleData = JSON.parse(JSON.stringify(defaultSchedule));
+
+        // ฟังก์ชันส่งข้อมูลไปยัง Google Sheet
+        async function sendDataToGoogleSheet(action, day, time, name, id, topic) {
+            // ถ้ายังไม่ได้ใส่ URL ข้ามการทำงานไปเพื่อไม่ให้ Error แต่เว็บยังใช้ LocalStorage ได้ปกติ
+            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE') {
+                console.warn('โปรดใส่ GOOGLE_SCRIPT_URL เพื่ออัปเดตข้อมูลไปยัง Google Sheet');
+                return true; 
+            }
+
+            try {
+                // ส่งเป็นรูปแบบ x-www-form-urlencoded (ใช้ได้ดีกับ Google Apps Script doPost)
+                const formData = new URLSearchParams();
+                formData.append('action', action); // 'book' หรือ 'cancel'
+                formData.append('day', day);
+                formData.append('time', time);
+                formData.append('name', name);
+                formData.append('id', id);
+                formData.append('topic', topic);
+                formData.append('timestamp', new Date().toISOString());
+
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: formData,
+                    // mode: 'no-cors' // สามารถเปิดใช้ no-cors ได้หากติดปัญหา CORS Policy จากฝั่ง Google
+                });
+
+                return response;
+            } catch (error) {
+                console.error('Error sending data to Google Sheet:', error);
+                throw error;
+            }
+        }
 
         // ฟังก์ชันโหลดและตรวจสอบการรีเซ็ตเมื่อถึงวันเสาร์
         function loadAndCheckReset() {
@@ -244,7 +280,6 @@
                 tdDay.textContent = day;
                 tr.appendChild(tdDay);
 
-                // ตรวจสอบว่าเป็นวันพฤหัสหรือศุกร์หรือไม่ (จากภาพคือ Not Available ทั้งแถว)
                 if (day === 'THURSDAY' || day === 'FRIDAY') {
                     const tdNotAvail = document.createElement('td');
                     tdNotAvail.colSpan = 4;
@@ -252,7 +287,6 @@
                     tdNotAvail.innerHTML = '<div class="w-full bg-gray-100/70 text-gray-400 font-medium py-4 rounded-xl border border-gray-200/50 text-center flex items-center justify-center gap-2 text-base tracking-wide"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>Not Available</div>';
                     tr.appendChild(tdNotAvail);
                 } else {
-                    // คอลัมน์เวลาต่างๆ
                     times.forEach((time, index) => {
                         const td = document.createElement('td');
                         const status = scheduleData[day][time];
@@ -260,7 +294,6 @@
                         td.className = `py-3 px-3`;
 
                         if (status === null) {
-                            // กรณีว่าง
                             td.innerHTML = `
                                 <div class="h-full w-full bg-white border border-green-300 text-green-600 rounded-xl py-4 px-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-green-500 hover:text-white hover:border-green-500 hover:shadow-lg hover:shadow-green-200 transition-all duration-300 group/btn">
                                     <span class="font-bold text-lg tracking-wide">Available</span>
@@ -269,14 +302,12 @@
                             `;
                             td.onclick = () => openModal(day, time);
                         } else if (status === false) {
-                            // กรณีปิดรับ (กันเหนียวเผื่อเปลี่ยน state)
                             td.innerHTML = `
                                 <div class="h-full w-full bg-gray-100/70 text-gray-400 rounded-xl py-4 px-2 flex flex-col items-center justify-center border border-gray-200/50 cursor-not-allowed text-base tracking-wide">
                                     <span class="font-medium">Not Available</span>
                                 </div>
                             `;
                         } else {
-                            // กรณีมีผู้จองแล้ว (เปลี่ยนตัวอักษรและกรอบเป็นสีแดง)
                             td.innerHTML = `
                                 <div class="h-full w-full bg-white border-2 border-red-400 rounded-xl py-3 px-2 flex flex-col items-center justify-center shadow-sm cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
                                     <div class="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
@@ -303,9 +334,7 @@
             document.getElementById('bookDay').value = day;
             document.getElementById('bookTime').value = time;
             
-            // รีเซ็ตฟอร์ม
             bookingForm.reset();
-            
             modal.classList.remove('hidden');
         }
 
@@ -332,8 +361,8 @@
             viewModal.classList.add('hidden');
         }
 
-        // จัดการเมื่อกด ยืนยันการจอง
-        bookingForm.addEventListener('submit', function(e) {
+        // จัดการเมื่อกด ยืนยันการจอง (แก้เป็น async/await)
+        bookingForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             const day = document.getElementById('bookDay').value;
             const time = document.getElementById('bookTime').value;
@@ -341,7 +370,7 @@
             const id = document.getElementById('studentId').value;
             const topic = document.getElementById('topic').value;
 
-            // บันทึกข้อมูลลง state
+            // บันทึกข้อมูลลง state ท้องถิ่นทันทีเพื่อความรวดเร็ว
             scheduleData[day][time] = {
                 name: name,
                 id: id,
@@ -351,38 +380,53 @@
             saveData(); // บันทึกลง Local Storage
             closeModal();
             renderTable();
-            showNotification(`จองเวลา ${time} น. สำเร็จ!`);
+            
+            // แสดงสถานะว่ากำลังส่งข้อมูล
+            showNotification(`กำลังอัปเดตข้อมูลไปยังระบบ...`, 'blue');
+
+            try {
+                // ส่งข้อมูลไปยัง Google Sheet
+                await sendDataToGoogleSheet('book', day, time, name, id, topic);
+                showNotification(`จองเวลา ${time} น. สำเร็จ!`, 'green');
+            } catch (error) {
+                // กรณีล้มเหลว
+                showNotification(`บันทึกบนเครื่องสำเร็จ แต่ส่งไป Google Sheet ไม่ได้`, 'red');
+            }
         });
 
-        // ฟังก์ชันยกเลิกการจอง
-        function cancelBooking() {
+        // ฟังก์ชันยกเลิกการจอง (แก้เป็น async/await)
+        async function cancelBooking() {
             const day = document.getElementById('cancelDay').value;
             const time = document.getElementById('cancelTime').value;
             
-            // รีเซ็ตเป็นค่าว่าง (null)
+            // รีเซ็ตเป็นค่าว่าง (null) ท้องถิ่นทันที
             scheduleData[day][time] = null;
             
             saveData(); // บันทึกลง Local Storage
             closeViewModal();
             renderTable();
-            showNotification(`ยกเลิกการจองเวลา ${time} น. แล้ว`, 'red');
+            
+            showNotification(`กำลังยกเลิกการจอง...`, 'blue');
+
+            try {
+                // ส่งคำสั่งลบไปยัง Google Sheet
+                await sendDataToGoogleSheet('cancel', day, time, '', '', '');
+                showNotification(`ยกเลิกการจองเวลา ${time} น. แล้ว`, 'green');
+            } catch (error) {
+                showNotification(`ยกเลิกบนเครื่องสำเร็จ แต่ส่งไป Google Sheet ไม่ได้`, 'red');
+            }
         }
 
         // --- ฟังก์ชันส่งออกเป็นไฟล์ Excel (CSV) ---
         function exportToExcel() {
-            // \uFEFF คือ BOM เพื่อให้ Excel อ่านภาษาไทย (UTF-8) ได้ถูกต้อง
             let csvContent = "\uFEFF"; 
             
-            // เพิ่มส่วนหัวของตาราง
             csvContent += "ตารางเข้ามาพบที่ปรึกษานวัตกรรม STEAM Robotics and Innovation ปีการศึกษา 1/2569\n";
             csvContent += "หัวข้อ:,อัปเดต Progression / โครงงาน / นวัตกรรม\n";
             csvContent += "สถานที่:,Meet at B408 DE\n";
             csvContent += "ที่ปรึกษา:,T.Yohan / T.Por\n\n";
-
-            // หัวคอลัมน์ของข้อมูล
             csvContent += "DAY / TIME,16.00,16.30,16.45,17.00\n";
 
-            // วนลูปข้อมูลแต่ละแถว
             days.forEach(day => {
                 let row = `${day}`;
                 
@@ -396,7 +440,6 @@
                         } else if (status === false) {
                             row += ",not available";
                         } else {
-                            // ใส่เครื่องหมายคำพูด (") ครอบเพื่อป้องกันปัญหาจุลภาค (,) ในชื่อหรือหัวข้อ
                             const cellData = `${status.name} (${status.id}) - ${status.topic}`;
                             row += `,"${cellData}"`;
                         }
@@ -405,7 +448,6 @@
                 csvContent += row + "\n";
             });
 
-            // สร้าง Blob และลิงก์สำหรับดาวน์โหลด
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             const url = URL.createObjectURL(blob);
@@ -419,28 +461,50 @@
             document.body.removeChild(link);
         }
 
-        // ฟังก์ชันแสดงข้อความแจ้งเตือน (Custom Toast)
+        // ฟังก์ชันแสดงข้อความแจ้งเตือน (เพิ่มสี blue สำหรับสถานะกำลังโหลด)
         function showNotification(message, color = 'green') {
             const toast = document.createElement('div');
-            const bgColor = color === 'green' ? 'bg-emerald-600' : 'bg-red-500';
+            
+            let bgColor = 'bg-emerald-600';
+            let iconHtml = `<svg class="w-6 h-6 text-emerald-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+
+            if (color === 'red') {
+                bgColor = 'bg-red-500';
+                iconHtml = `<svg class="w-6 h-6 text-red-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+            } else if (color === 'blue') {
+                bgColor = 'bg-blue-600';
+                iconHtml = `<svg class="w-5 h-5 text-blue-100 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+            }
+
             toast.className = `fixed bottom-8 right-8 ${bgColor} text-white px-6 py-4 rounded-2xl shadow-2xl transform transition-all duration-300 translate-y-0 opacity-100 z-50 font-medium flex items-center gap-3 border border-white/20`;
-            toast.innerHTML = color === 'green' 
-                ? `<svg class="w-6 h-6 text-emerald-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> ${message}`
-                : `<svg class="w-6 h-6 text-red-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> ${message}`;
+            toast.innerHTML = `${iconHtml} ${message}`;
             
             document.body.appendChild(toast);
             
-            setTimeout(() => {
-                toast.classList.add('opacity-0', 'translate-y-2');
-                setTimeout(() => document.body.removeChild(toast), 300);
-            }, 3000);
+            // ถ้าเป็นสีฟ้า (กำลังโหลด) ไม่ต้องปิดตัวเองอัตโนมัติ ให้ถูกลบด้วย Notification ถัดไป
+            if (color !== 'blue') {
+                setTimeout(() => {
+                    toast.classList.add('opacity-0', 'translate-y-2');
+                    setTimeout(() => document.body.removeChild(toast), 300);
+                }, 3000);
+            } else {
+                // ปิดอันเก่าทิ้งถ้ามีการโหลดสำเร็จในเวลาต่อมา
+                setTimeout(() => {
+                    if (document.body.contains(toast)) {
+                        toast.classList.add('opacity-0', 'translate-y-2');
+                        setTimeout(() => {
+                           if (document.body.contains(toast)) document.body.removeChild(toast);
+                        }, 300);
+                    }
+                }, 5000); // เผื่อกรณีค้าง จะได้หายไปเองใน 5 วิ
+            }
         }
 
         // วาดตารางครั้งแรกเมื่อโหลดหน้าเว็บ
         window.onload = () => {
-            updateClock();         // เริ่มการทำงานนาฬิกา
-            loadAndCheckReset();   // โหลดข้อมูลเก่า/ตรวจสอบการรีเซ็ตวันเสาร์
-            renderTable();         // วาดตาราง
+            updateClock();         
+            loadAndCheckReset();   
+            renderTable();         
         };
 
     </script>
